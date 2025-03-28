@@ -1,0 +1,71 @@
+{
+    "leads": [
+        {
+            "username": "user1",
+            "platform": "𝕏",
+            "text": "Looking for slow shipping solutions, any recommendations?",
+            "time": "2025-03-27T10:00:00.000Z",
+            "match": 90
+        },
+        {
+            "username": "user2",
+            "platform": "𝕏",
+            "text": "Need better shipping options, current ones are too slow!",
+            "time": "2025-03-27T09:50:00.000Z",
+            "match": 92
+        },
+        {
+            "username": "user3",
+            "platform": "𝕏",
+            "text": "Anyone know a good logistics tool for slow shipping?",
+            "time": "2025-03-27T09:40:00.000Z",
+            "match": 94
+        },
+        {
+            "username": "user4",
+            "platform": "𝕏",
+            "text": "Shipping delays are killing my business, need solutions!",
+            "time": "2025-03-27T09:30:00.000Z",
+            "match": 96
+        },
+        {
+            "username": "user5",
+            "platform": "𝕏",
+            "text": "Looking for a shipping platform that isn’t slow, suggestions?",
+            "time": "2025-03-27T09:20:00.000Z",
+            "match": 98
+        }
+    ],
+    "competitor_complaints": [
+        {
+            "username": "user6",
+            "platform": "𝕏",
+            "text": "HubSpot lags so much, it’s frustrating!",
+            "time": "2025-03-27T09:00:00.000Z",
+            "match": 90
+        },
+        {
+            "username": "user7",
+            "platform": "𝕏",
+            "text": "Salesforce is too expensive for what it offers.",
+            "time": "2025-03-27T08:50:00.000Z",
+            "match": 92
+        }
+    ],
+    "company_complaints": [
+        {
+            "username": "user8",
+            "platform": "𝕏",
+            "text": "Acme Solutions shipping delays cost us a deal.",
+            "time": "2025-03-27T08:40:00.000Z",
+            "match": 90
+        },
+        {
+            "username": "user9",
+            "platform": "𝕏",
+            "text": "Acme Solutions has bad customer support.",
+            "time": "2025-03-27T08:30:00.000Z",
+            "match": 92
+        }
+    ]
+}

@@ -1,29 +1,18 @@
-// firebase.js
 const admin = require("firebase-admin");
-const fs = require("fs");
-const path = require("path");
-require("dotenv").config();
 
-let serviceAccount;
-
-if (process.env.FIREBASE_ADMIN_SDK) {
-  try {
-    serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SDK);
-    console.log("🔐 Firebase loaded from environment variable.");
-  } catch (err) {
-    console.error("❌ Invalid FIREBASE_ADMIN_SDK in .env", err);
-    process.exit(1);
-  }
-} else {
-  try {
-    const keyPath = path.resolve(__dirname, "serviceAccountKey.json");
-    serviceAccount = require(keyPath);
-    console.log("🔐 Firebase loaded from local serviceAccountKey.json.");
-  } catch (err) {
-    console.error("❌ Firebase service account JSON missing!", err);
-    process.exit(1);
-  }
-}
+// Build the service account object from environment variables
+const serviceAccount = {
+  type: process.env.FIREBASE_TYPE,
+  project_id: process.env.FIREBASE_PROJECT_ID,
+  private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'), // important!
+  client_email: process.env.FIREBASE_CLIENT_EMAIL,
+  client_id: process.env.FIREBASE_CLIENT_ID,
+  auth_uri: process.env.FIREBASE_AUTH_URI,
+  token_uri: process.env.FIREBASE_TOKEN_URI,
+  auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
+  client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
+};
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -31,6 +20,6 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-console.log("✅ Firebase connected successfully!");
+console.log("✅ Firebase initialized from environment");
 
 module.exports = { db };

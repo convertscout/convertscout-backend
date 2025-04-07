@@ -12,7 +12,6 @@ const r = new snoowrap({
 
 const classifier = new natural.BayesClassifier();
 
-// Train the classifier with more examples
 classifier.addDocument("this is terrible", "complaint");
 classifier.addDocument("i hate this", "complaint");
 classifier.addDocument("such a bad experience", "complaint");
@@ -28,31 +27,11 @@ classifier.train();
 
 const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
   try {
-    console.log("Scraping Reddit with niche:", niche, "competitor:", competitor, "businessName:", businessName, "problemSolved:", problemSolved);
-
-    // Expanded list of subreddits, including more general ones
     const subreddits = [
-      "CRM",
-      "sales",
-      "smallbusiness",
-      "technology",
-      "SaaS",
-      "Entrepreneur",
-      "startups",
-      "marketing",
-      "business",
-      "techsupport",
-      "software",
-      "productivity",
-      "webdev",
-      "sysadmin",
-      "CustomerService",
-      "AskReddit", // General subreddit for broad queries
-      "personalfinance", // For business-related complaints
-      "tech", // General tech discussions
-      "socialmedia", // For marketing-related discussions
-      "freelance", // For freelancers discussing tools
-      "ecommerce", // For online business discussions
+      "CRM", "sales", "smallbusiness", "technology", "SaaS", "Entrepreneur",
+      "startups", "marketing", "business", "techsupport", "software",
+      "productivity", "webdev", "sysadmin", "CustomerService", "AskReddit",
+      "personalfinance", "tech", "socialmedia", "freelance", "ecommerce",
     ];
 
     const leads = [];
@@ -60,42 +39,28 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
     const companyComplaints = [];
 
     for (const subreddit of subreddits) {
-      console.log(`Searching subreddit: r/${subreddit}`);
-
-      // Search for posts related to the niche, competitor, businessName, and problemSolved
       const posts = await r.getSubreddit(subreddit).search({
         query: `${niche} OR ${competitor} OR "${businessName}" OR "${problemSolved}" "problem" OR "issue" OR "complaint" OR "frustrating" OR "expensive" OR "bad" -job -salary -hiring`,
         sort: "new",
         time: "month",
-        limit: 20,
+        limit: 15,
       });
-
-      console.log(`Posts found in r/${subreddit}:`, posts.length);
 
       for (const post of posts) {
         const postText = (post.title + " " + (post.selftext || "")).toLowerCase();
 
-        // Skip job-related posts
         const excludeKeywords = ["job", "salary", "hiring", "apply", "position", "career"];
-        if (excludeKeywords.some((keyword) => postText.includes(keyword))) {
-          console.log("Skipping job-related post:", post.title);
-          continue;
-        }
+        if (excludeKeywords.some((keyword) => postText.includes(keyword))) continue;
 
-        // Use NLP to classify the post
         const classification = classifier.classify(postText);
-        if (classification !== "complaint") {
-          console.log("Skipping non-complaint post:", post.title);
-          continue;
-        }
+        if (classification !== "complaint") continue;
 
-        // Fetch the user's profile picture
         let profilePicture = null;
         try {
           const user = await r.getUser(post.author.name).fetch();
           profilePicture = user.icon_img || null;
         } catch (error) {
-          console.log(`Could not fetch profile picture for ${post.author.name}:`, error.message);
+          console.log(`Failed fetching avatar for ${post.author.name}`);
         }
 
         const postData = {
@@ -108,32 +73,21 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
           profile_picture: profilePicture,
         };
 
-        // Categorize the post
-        // Hot Leads: Users expressing a need that matches the problemSolved
         const problemKeywords = problemSolved.toLowerCase().split(" ");
-        if (problemKeywords.some((keyword) => postText.includes(keyword))) {
-          console.log("Hot lead found:", post.title);
-          leads.push(postData);
-        }
-
-        // Competitor Complaints
-        if (postText.includes(competitor.toLowerCase())) {
-          console.log("Competitor complaint found:", post.title);
-          competitorComplaints.push(postData);
-        }
-
-        // Company Complaints
-        if (postText.includes(businessName.toLowerCase())) {
-          console.log("Company complaint found:", post.title);
-          companyComplaints.push(postData);
-        }
+        if (problemKeywords.some((kw) => postText.includes(kw))) leads.push(postData);
+        if (postText.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
+        if (postText.includes(businessName.toLowerCase())) companyComplaints.push(postData);
       }
     }
 
-    console.log("Reddit scrape results:", { leads, competitorComplaints, companyComplaints });
-    return { leads, competitorComplaints, companyComplaints };
+    // Return only top 3 per section
+    return {
+      leads: leads.slice(0, 3),
+      competitorComplaints: competitorComplaints.slice(0, 3),
+      companyComplaints: companyComplaints.slice(0, 3),
+    };
   } catch (error) {
-    console.error("Error scraping Reddit:", error);
+    console.error("Reddit scraping failed:", error);
     return { leads: [], competitorComplaints: [], companyComplaints: [] };
   }
 };

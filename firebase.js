@@ -1,24 +1,36 @@
-require("dotenv").config();
+// firebase.js
 const admin = require("firebase-admin");
-
-if (!process.env.FIREBASE_ADMIN_SDK) {
-  throw new Error("⚠️ ERROR: FIREBASE_ADMIN_SDK is missing in .env file!");
-}
+const fs = require("fs");
+const path = require("path");
+require("dotenv").config();
 
 let serviceAccount;
-try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SDK.replace(/\n/g, "\\n"));
-} catch (error) {
-  console.error("❌ ERROR: Invalid JSON in FIREBASE_ADMIN_SDK", error);
-  process.exit(1);
+
+if (process.env.FIREBASE_ADMIN_SDK) {
+  try {
+    serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SDK);
+    console.log("🔐 Firebase loaded from environment variable.");
+  } catch (err) {
+    console.error("❌ Invalid FIREBASE_ADMIN_SDK in .env", err);
+    process.exit(1);
+  }
+} else {
+  try {
+    const keyPath = path.resolve(__dirname, "serviceAccountKey.json");
+    serviceAccount = require(keyPath);
+    console.log("🔐 Firebase loaded from local serviceAccountKey.json.");
+  } catch (err) {
+    console.error("❌ Firebase service account JSON missing!", err);
+    process.exit(1);
+  }
 }
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-const db = admin.firestore(); // 🔥 FIXED: Explicitly create Firestore instance
+const db = admin.firestore();
 
 console.log("✅ Firebase connected successfully!");
 
-module.exports = { db }; // 🔥 FIXED: Export db instead of admin
+module.exports = { db };

@@ -16,20 +16,18 @@ app.get("/", (req, res) => {
   res.send("✅ Backend is live.");
 });
 
-// POST /api/leads - receives user input, scrapes Reddit, stores in Firestore
 app.post("/api/leads", async (req, res) => {
   try {
     const { businessName, niche, competitor, email } = req.body;
 
     if (!businessName || !niche || !email) {
-      return res.status(400).json({ error: "Missing required fields" });
+      return res.status(400).json({ error: "Missing required fields: businessName, niche, or email." });
     }
 
-    console.log(`📥 New submission from: ${email}`);
-    console.log("🔄 Running Reddit scraper...");
+    console.log(`📥 New lead submission from: ${email}`);
+    console.log("🔍 Starting Reddit scraping...");
 
-    const redditData = await scrapeReddit(niche, competitor, businessName, niche);
-    console.log("✅ Scraping completed!");
+    const redditData = await scrapeReddit(niche, competitor, businessName);
 
     const leadData = {
       submittedAt: new Date().toISOString(),
@@ -37,21 +35,19 @@ app.post("/api/leads", async (req, res) => {
       niche,
       competitor,
       email,
-      reddit: {
-        leads: redditData.leads,
-        competitor_complaints: redditData.competitorComplaints,
-        company_complaints: redditData.companyComplaints,
-      },
+      reddit: redditData,
     };
 
-    // Save under auto-generated ID to avoid overwrite
     const docRef = await db.collection("scraped_data").add(leadData);
-    console.log(`📤 Data stored with ID: ${docRef.id}`);
+    console.log(`✅ Data stored with ID: ${docRef.id}`);
 
-    return res.status(200).json({ message: "Scraping done", data: leadData.reddit });
+    return res.status(200).json({
+      message: "Scraping completed successfully",
+      data: redditData,
+    });
   } catch (error) {
-    console.error("❌ Error during scrape:", error);
-    return res.status(500).json({ error: "Something went wrong during scraping." });
+    console.error("❌ Scraping error:", error);
+    return res.status(500).json({ error: "An error occurred while processing your request." });
   }
 });
 

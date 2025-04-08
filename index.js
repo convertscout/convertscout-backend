@@ -1,17 +1,10 @@
 const express = require("express");
-const admin = require("firebase-admin");
-const serviceAccount = require("./serviceAccountKey.json"); // or load from env
+const { db } = require("./firebase"); // ✅ Load initialized Firestore from firebase.js
 require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 
-// Initialize Firebase Admin SDK
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-const db = admin.firestore();
 
 // API endpoint
 app.get("/api/leads/:email", async (req, res) => {

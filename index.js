@@ -18,7 +18,7 @@ app.get("/", (req, res) => {
 
 app.post("/api/leads", async (req, res) => {
   try {
-    const { businessName, niche, competitor, email } = req.body;
+    const { businessName, niche, competitor, email, problemSolved } = req.body;
 
     if (!businessName || !niche || !email) {
       return res.status(400).json({ error: "Missing required fields: businessName, niche, or email." });
@@ -27,7 +27,7 @@ app.post("/api/leads", async (req, res) => {
     console.log(`📥 New lead submission from: ${email}`);
     console.log("🔍 Starting Reddit scraping...");
 
-    const redditData = await scrapeReddit(niche, competitor, businessName);
+    const redditData = await scrapeReddit(niche, competitor, businessName, problemSolved || "");
 
     const leadData = {
       submittedAt: new Date().toISOString(),

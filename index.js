@@ -1,56 +1,23 @@
-// index.js
-const express = require("express");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const { db } = require("./firebase");
-const scrapeReddit = require("./scrape_reddit");
+app.get("/api/leads/:email", async (req, res) => {
+  const { email } = req.params;
+  if (!email) return res.status(400).json({ error: "Email is required." });
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-
-app.get("/", (req, res) => {
-  res.send("✅ Backend is live.");
-});
-
-app.post("/api/leads", async (req, res) => {
   try {
-    const { businessName, niche, competitor, email, problemSolved } = req.body;
+    const leadsRef = db.collection("users").doc(email).collection("leads");
+    const snapshot = await leadsRef.orderBy("submittedAt", "desc").get();
 
-    if (!businessName || !niche || !email) {
-      return res.status(400).json({ error: "Missing required fields: businessName, niche, or email." });
+    if (snapshot.empty) {
+      return res.status(200).json({ message: "No data found", data: [] });
     }
 
-    console.log(`📥 New lead submission from: ${email}`);
-    console.log("🔍 Starting Reddit scraping...");
+    const leads = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
-    const redditData = await scrapeReddit(niche, competitor, businessName, problemSolved || "");
-
-    const leadData = {
-      submittedAt: new Date().toISOString(),
-      businessName,
-      niche,
-      competitor,
-      email,
-      reddit: redditData,
-    };
-
-    const docRef = await db.collection("scraped_data").add(leadData);
-    console.log(`✅ Data stored with ID: ${docRef.id}`);
-
-    return res.status(200).json({
-      message: "Scraping completed successfully",
-      data: redditData,
-    });
+    return res.status(200).json({ data: leads });
   } catch (error) {
-    console.error("❌ Scraping error:", error);
-    return res.status(500).json({ error: "An error occurred while processing your request." });
+    console.error("❌ Error fetching leads:", error);
+    return res.status(500).json({ error: "Failed to fetch leads" });
   }
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
 });

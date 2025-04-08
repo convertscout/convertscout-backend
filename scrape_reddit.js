@@ -10,99 +10,89 @@ const r = new snoowrap({
   password: process.env.REDDIT_PASSWORD,
 });
 
+// Classifier for complaints and interest
 const classifier = new natural.BayesClassifier();
 
-// Complaint training data
-[
-  "this is terrible",
-  "i hate this",
-  "bad experience",
-  "slow and frustrating",
-  "worst service",
-  "too expensive",
-  "buggy app",
-  "low quality",
-  "can't recommend",
-  "not worth the money",
-].forEach(text => classifier.addDocument(text, "complaint"));
-
-// Non-complaint examples
-[
-  "great product",
-  "love this tool",
-  "awesome service",
-  "smooth experience",
-  "works great",
-].forEach(text => classifier.addDocument(text, "non-complaint"));
-
+classifier.addDocument("this is terrible", "complaint");
+classifier.addDocument("worst experience ever", "complaint");
+classifier.addDocument("too expensive and doesn't work", "complaint");
+classifier.addDocument("looking for a solution", "interest");
+classifier.addDocument("need a recommendation", "interest");
+classifier.addDocument("what do you use for", "interest");
 classifier.train();
 
-const scrapeReddit = async (niche, competitor, businessName) => {
+function generateSubreddits(niche) {
+  const formatted = niche.replace(/\s+/g, "").toLowerCase();
+  return [
+    formatted,
+    `${formatted}business`,
+    `${formatted}support`,
+    "AskReddit",
+    "Entrepreneur",
+    "smallbusiness",
+    "Advice",
+    "recommendations",
+    "startup",
+    "business",
+  ];
+}
+
+const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
   try {
-    const keywords = [niche, competitor, businessName].filter(Boolean).map(k => k.toLowerCase());
-    const broadKeywords = [
-      "problem", "issue", "struggle", "hate", "bad", "complaint",
-      "feedback", "downside", "frustration", "dealbreaker", "pain"
-    ];
-
-    const subreddits = [
-      "all", "Entrepreneur", "startups", "smallbusiness", "marketing",
-      "AskReddit", "business", "ecommerce", "freelance", "technology",
-      "CustomerService", "techsupport", "webdev", "personalfinance"
-    ];
-
+    const subreddits = generateSubreddits(niche);
     const leads = [];
     const competitorComplaints = [];
     const companyComplaints = [];
 
     for (const subreddit of subreddits) {
-      const query = keywords.concat(broadKeywords).join(" OR ");
-      const posts = await r.getSubreddit(subreddit).search({
-        query,
-        sort: "new",
-        time: "month",
-        limit: 20,
-      });
+      try {
+        const posts = await r.getSubreddit(subreddit).search({
+          query: `${niche} OR "${problemSolved}" OR "${competitor}" OR "${businessName}"`,
+          sort: "new",
+          time: "month",
+          limit: 15,
+        });
 
-      for (const post of posts) {
-        const postText = (post.title + " " + (post.selftext || "")).toLowerCase();
-        const exclude = ["job", "salary", "hiring", "apply", "career", "intern"];
-        if (exclude.some(term => postText.includes(term))) continue;
+        for (const post of posts) {
+          const postText = (post.title + " " + (post.selftext || "")).toLowerCase();
+          const exclude = ["job", "salary", "hiring", "apply"];
+          if (exclude.some(k => postText.includes(k))) continue;
 
-        const classification = classifier.classify(postText);
-        if (classification !== "complaint") continue;
+          const classification = classifier.classify(postText);
+          if (!["complaint", "interest"].includes(classification)) continue;
 
-        let profilePicture = null;
-        try {
-          const user = await r.getUser(post.author.name).fetch();
-          profilePicture = user.icon_img || null;
-        } catch {
-          profilePicture = null;
+          let profilePicture = null;
+          try {
+            const user = await r.getUser(post.author.name).fetch();
+            profilePicture = user.icon_img || null;
+          } catch {}
+
+          const postData = {
+            username: post.author.name,
+            platform: "Reddit",
+            time: new Date(post.created_utc * 1000).toISOString(),
+            text: post.title + " " + (post.selftext || ""),
+            match: Math.floor(Math.random() * (100 - 90 + 1)) + 90,
+            connect_url: `https://reddit.com${post.permalink}`,
+            profile_picture: profilePicture,
+          };
+
+          if (postText.includes(problemSolved.toLowerCase())) leads.push(postData);
+          if (postText.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
+          if (postText.includes(businessName.toLowerCase())) companyComplaints.push(postData);
         }
-
-        const postData = {
-          username: post.author.name,
-          platform: "Reddit",
-          time: new Date(post.created_utc * 1000).toISOString(),
-          text: post.title + " " + (post.selftext || ""),
-          match: Math.floor(Math.random() * 11) + 90,
-          connect_url: `https://reddit.com${post.permalink}`,
-          profile_picture: profilePicture,
-        };
-
-        if (keywords.some(k => postText.includes(k))) leads.push(postData);
-        if (postText.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
-        if (postText.includes(businessName.toLowerCase())) companyComplaints.push(postData);
+      } catch (err) {
+        console.log(`❌ Subreddit "${subreddit}" failed:`, err.message);
       }
     }
 
     return {
-      leads: leads.slice(0, 5),
-      competitorComplaints: competitorComplaints.slice(0, 5),
-      companyComplaints: companyComplaints.slice(0, 5),
+      leads: leads.slice(0, 3),
+      competitorComplaints: competitorComplaints.slice(0, 3),
+      companyComplaints: companyComplaints.slice(0, 3),
     };
-  } catch (err) {
-    console.error("❌ Reddit scraping failed:", err);
+  } catch (error) {
+    console.error("❌ Reddit scraping error:", error);
     return { leads: [], competitorComplaints: [], companyComplaints: [] };
   }
 };

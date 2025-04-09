@@ -1,11 +1,12 @@
 const express = require("express");
 const { db } = require("./firebase");
+const scrapeReddit = require("./scrape_reddit"); // ✅ Add this!
 require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 
-// ✅ POST /api/leads — Save form submissions
+// ✅ POST /api/leads — Save form submissions and scrape
 app.post("/api/leads", async (req, res) => {
   const { businessName, niche, competitor, email, problemSolved } = req.body;
 
@@ -14,25 +15,26 @@ app.post("/api/leads", async (req, res) => {
   }
 
   try {
-    const leadsRef = db.collection("users").doc(email).collection("leads");
+    const scrapedData = await scrapeReddit(niche, competitor, businessName, problemSolved || "");
 
-    await leadsRef.add({
+    await db.collection("users").doc(email).collection("leads").add({
       businessName,
       niche,
       competitor,
       email,
-      problemSolved: problemSolved || "",
+      problemSolved,
+      scrapedData,
       submittedAt: new Date(),
     });
 
-    return res.status(200).json({ message: "✅ Lead submitted successfully." });
+    return res.status(200).json({ message: "✅ Lead submitted and scraping complete.", scrapedData });
   } catch (error) {
     console.error("❌ Error saving lead:", error);
     return res.status(500).json({ error: "Failed to save lead." });
   }
 });
 
-// ✅ GET /api/leads/:email — Fetch leads for logged-in user
+// ✅ GET /api/leads/:email — Fetch saved leads
 app.get("/api/leads/:email", async (req, res) => {
   const { email } = req.params;
   if (!email) return res.status(400).json({ error: "Email is required." });
@@ -57,7 +59,7 @@ app.get("/api/leads/:email", async (req, res) => {
   }
 });
 
-// Start the server
+// ✅ Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);

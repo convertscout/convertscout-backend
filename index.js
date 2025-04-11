@@ -1,12 +1,12 @@
 const express = require("express");
 const { db } = require("./firebase");
-const scrapeReddit = require("./scrape_reddit"); // ✅ Add this!
+const scrapeReddit = require("./scrape_reddit");
 require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 
-// ✅ POST /api/leads — Save form submissions and scrape
+// ✅ POST /api/leads — Save form submissions and scrape Reddit
 app.post("/api/leads", async (req, res) => {
   const { businessName, niche, competitor, email, problemSolved } = req.body;
 
@@ -15,26 +15,34 @@ app.post("/api/leads", async (req, res) => {
   }
 
   try {
-    const scrapedData = await scrapeReddit(niche, competitor, businessName, problemSolved || "");
+    const leadsRef = db.collection("users").doc(email).collection("leads");
 
-    await db.collection("users").doc(email).collection("leads").add({
+    // 1. Save metadata first (without scraped data)
+    const metaDoc = await leadsRef.add({
       businessName,
       niche,
       competitor,
       email,
-      problemSolved,
-      scrapedData,
+      problemSolved: problemSolved || "",
       submittedAt: new Date(),
     });
 
-    return res.status(200).json({ message: "✅ Lead submitted and scraping complete.", scrapedData });
+    // 2. Trigger scraping
+    const scraped = await scrapeReddit(niche, competitor, businessName, problemSolved);
+
+    // 3. Save the scraped data under that submission
+    await leadsRef.doc(metaDoc.id).update({
+      reddit: scraped,
+    });
+
+    return res.status(200).json({ message: "✅ Lead submitted and scraped successfully." });
   } catch (error) {
-    console.error("❌ Error saving lead:", error);
-    return res.status(500).json({ error: "Failed to save lead." });
+    console.error("❌ Error saving or scraping lead:", error);
+    return res.status(500).json({ error: "Failed to process lead." });
   }
 });
 
-// ✅ GET /api/leads/:email — Fetch saved leads
+// ✅ GET /api/leads/:email — Fetch leads for user
 app.get("/api/leads/:email", async (req, res) => {
   const { email } = req.params;
   if (!email) return res.status(400).json({ error: "Email is required." });
@@ -59,7 +67,7 @@ app.get("/api/leads/:email", async (req, res) => {
   }
 });
 
-// ✅ Start server
+// Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);

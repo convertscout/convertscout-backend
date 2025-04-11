@@ -25,7 +25,8 @@ app.post("/api/leads", async (req, res) => {
       email,
       problemSolved: problemSolved || "",
       submittedAt: new Date(),
-    });
+      reddit: redditResults // ✅ FIXED: wrap scraped data under "reddit"
+    });    
 
     // 2. Trigger scraping
     const scraped = await scrapeReddit(niche, competitor, businessName, problemSolved);

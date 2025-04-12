@@ -10,14 +10,17 @@ app.use(express.json());
 app.post("/api/leads", async (req, res) => {
   const { businessName, niche, competitor, email, problemSolved } = req.body;
 
+  console.log("🔥 POST /api/leads triggered");
+  console.log("📥 Received:", req.body);
+
   if (!email || !businessName || !niche) {
+    console.log("❌ Missing required fields");
     return res.status(400).json({ error: "Missing required fields." });
   }
 
   try {
     const leadsRef = db.collection("users").doc(email).collection("leads");
 
-    // 1. Save metadata first
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
@@ -27,13 +30,15 @@ app.post("/api/leads", async (req, res) => {
       submittedAt: new Date(),
     });
 
-    // 2. Scrape Reddit
-    const redditResults = await scrapeReddit(niche, competitor, businessName, problemSolved);
+    console.log("✅ Metadata saved:", metaDoc.id);
 
-    // 3. Save scraped data under that document
+    const scraped = await scrapeReddit(niche, competitor, businessName, problemSolved);
+
     await leadsRef.doc(metaDoc.id).update({
-      reddit: redditResults,
+      reddit: scraped,
     });
+
+    console.log("✅ Scraped data saved");
 
     return res.status(200).json({ message: "✅ Lead submitted and scraped successfully." });
   } catch (error) {

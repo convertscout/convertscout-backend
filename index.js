@@ -10,45 +10,38 @@ app.use(express.json());
 app.post("/api/leads", async (req, res) => {
   const { businessName, niche, competitor, email, problemSolved } = req.body;
 
-  if (!email || !businessName || !niche || !problemSolved) {
+  if (!email || !businessName || !niche) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
   try {
-    const userRef = db.collection("users").doc(email);
-    const leadsRef = userRef.collection("leads");
+    const leadsRef = db.collection("users").doc(email).collection("leads");
 
-    // ✅ Step 1: Check if leads already exist
-    const existingSnapshot = await leadsRef.orderBy("submittedAt", "desc").limit(1).get();
-    if (!existingSnapshot.empty) {
-      console.log("📦 Found existing data. Skipping scrape.");
-      return res.status(200).json({ message: "✅ User already exists. No need to scrape again." });
-    }
-
-    // ✅ Step 2: Save lead meta first
+    // 1. Save metadata first
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
       competitor,
       email,
-      problemSolved,
+      problemSolved: problemSolved || "",
       submittedAt: new Date(),
     });
 
-    // ✅ Step 3: Scrape Reddit
+    // 2. Scrape Reddit
     const redditResults = await scrapeReddit(niche, competitor, businessName, problemSolved);
 
-    // ✅ Step 4: Update the doc with scraped results
+    // 3. Save scraped data under that document
     await leadsRef.doc(metaDoc.id).update({
       reddit: redditResults,
     });
 
-    return res.status(200).json({ message: "✅ New user scraped and data saved." });
+    return res.status(200).json({ message: "✅ Lead submitted and scraped successfully." });
   } catch (error) {
     console.error("❌ Error saving or scraping lead:", error);
     return res.status(500).json({ error: "Failed to process lead." });
   }
 });
+
 
 // ✅ GET /api/leads/:email — Fetch leads for user
 app.get("/api/leads/:email", async (req, res) => {

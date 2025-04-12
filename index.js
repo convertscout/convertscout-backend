@@ -21,6 +21,21 @@ app.post("/api/leads", async (req, res) => {
   try {
     const leadsRef = db.collection("users").doc(email).collection("leads");
 
+    // ✅ Check if this user already has scraped leads
+    const snapshot = await leadsRef.orderBy("submittedAt", "desc").limit(1).get();
+
+    if (!snapshot.empty) {
+      const existingData = snapshot.docs[0].data();
+      if (existingData.reddit && existingData.reddit.leads?.length > 0) {
+        console.log("✅ Returning existing leads without re-scraping");
+        return res.status(200).json({
+          message: "✅ Returning existing scraped data.",
+          data: existingData,
+        });
+      }
+    }
+
+    // ✅ Save meta first
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
@@ -32,21 +47,32 @@ app.post("/api/leads", async (req, res) => {
 
     console.log("✅ Metadata saved:", metaDoc.id);
 
+    // ✅ Scrape Reddit
     const scraped = await scrapeReddit(niche, competitor, businessName, problemSolved);
 
+    // ✅ Update with scraped data
     await leadsRef.doc(metaDoc.id).update({
       reddit: scraped,
     });
 
     console.log("✅ Scraped data saved");
 
-    return res.status(200).json({ message: "✅ Lead submitted and scraped successfully." });
+    return res.status(200).json({
+      message: "✅ Lead submitted and scraped successfully.",
+      data: {
+        businessName,
+        niche,
+        competitor,
+        email,
+        problemSolved,
+        reddit: scraped,
+      },
+    });
   } catch (error) {
     console.error("❌ Error saving or scraping lead:", error);
     return res.status(500).json({ error: "Failed to process lead." });
   }
 });
-
 
 // ✅ GET /api/leads/:email — Fetch leads for user
 app.get("/api/leads/:email", async (req, res) => {

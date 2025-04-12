@@ -10,33 +10,40 @@ app.use(express.json());
 app.post("/api/leads", async (req, res) => {
   const { businessName, niche, competitor, email, problemSolved } = req.body;
 
-  if (!email || !businessName || !niche) {
+  if (!email || !businessName || !niche || !problemSolved) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
   try {
-    const leadsRef = db.collection("users").doc(email).collection("leads");
+    const userRef = db.collection("users").doc(email);
+    const leadsRef = userRef.collection("leads");
 
-    // 1. Save metadata first (without scraped data)
+    // ✅ Step 1: Check if leads already exist
+    const existingSnapshot = await leadsRef.orderBy("submittedAt", "desc").limit(1).get();
+    if (!existingSnapshot.empty) {
+      console.log("📦 Found existing data. Skipping scrape.");
+      return res.status(200).json({ message: "✅ User already exists. No need to scrape again." });
+    }
+
+    // ✅ Step 2: Save lead meta first
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
       competitor,
       email,
-      problemSolved: problemSolved || "",
+      problemSolved,
       submittedAt: new Date(),
-      reddit: redditResults // ✅ FIXED: wrap scraped data under "reddit"
-    });    
-
-    // 2. Trigger scraping
-    const scraped = await scrapeReddit(niche, competitor, businessName, problemSolved);
-
-    // 3. Save the scraped data under that submission
-    await leadsRef.doc(metaDoc.id).update({
-      reddit: scraped,
     });
 
-    return res.status(200).json({ message: "✅ Lead submitted and scraped successfully." });
+    // ✅ Step 3: Scrape Reddit
+    const redditResults = await scrapeReddit(niche, competitor, businessName, problemSolved);
+
+    // ✅ Step 4: Update the doc with scraped results
+    await leadsRef.doc(metaDoc.id).update({
+      reddit: redditResults,
+    });
+
+    return res.status(200).json({ message: "✅ New user scraped and data saved." });
   } catch (error) {
     console.error("❌ Error saving or scraping lead:", error);
     return res.status(500).json({ error: "Failed to process lead." });

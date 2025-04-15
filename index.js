@@ -1,9 +1,18 @@
 const express = require("express");
+const cors = require("cors");
 const { db } = require("./firebase");
 const scrapeReddit = require("./scrape_reddit");
 require("dotenv").config();
 
 const app = express();
+
+// ✅ Enable CORS for Netlify frontend
+app.use(cors({
+  origin: "https://convertscout.netlify.app", // Allow Netlify frontend
+  methods: ["GET", "POST"],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // ✅ POST /api/leads — Save form submissions and scrape Reddit

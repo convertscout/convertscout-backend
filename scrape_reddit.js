@@ -10,16 +10,17 @@ const r = new snoowrap({
 });
 
 const complaintKeywords = [
-  "hate", "sucks", "terrible", "worst", "not working",
-  "cancelled", "frustrated", "bug", "glitch", "billing issue",
-  "broken", "scam", "avoid", "issue", "problem", "doesn't work"
+  "hate", "sucks", "terrible", "worst", "not working", "cancelled", "frustrated", "bug", "glitch",
+  "billing issue", "broken", "scam", "avoid", "issue", "problem", "doesn't work", "unreliable"
 ];
 
 const interestKeywords = [
-  "recommendation", "looking for", "best tool", "need help",
-  "suggestion", "how do you", "anyone use", "what's best",
-  "alternatives to", "switch from", "leaving", "moving away"
+  "recommendation", "looking for", "best tool", "need help", "suggestion", "how do you", "anyone use",
+  "what's best", "alternatives to", "switch from", "leaving", "moving away", "crm for", "client tracking"
 ];
+
+// Avoid hitting Reddit too hard
+const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 function classifyText(text) {
   const lowered = text.toLowerCase();
@@ -32,34 +33,29 @@ function generateSubreddits(niche) {
   const formatted = niche.replace(/\s+/g, "").toLowerCase();
   return [
     formatted,
-    `${formatted}business`,
     `${formatted}support`,
-    "AskReddit",
     "Entrepreneur",
     "smallbusiness",
-    "Advice",
-    "recommendations",
-    "startup",
-    "business"
+    "startups",
+    "business",
+    "AskReddit"
   ];
 }
 
 function generateQueries(niche, competitor, businessName, problemSolved) {
   return [
     `"need help with ${niche}"`,
-    `"struggling with ${problemSolved}"`,
     `"alternatives to ${competitor}"`,
-    `"issues with ${competitor}"`,
     `"bad experience with ${competitor}"`,
     `"recommendation for ${niche}"`,
     `"problems with ${businessName}"`,
-    `"hate using ${competitor}"`,
-    `"frustrated with ${problemSolved}"`,
-    `"switching from ${competitor}"`,
-    `${niche}`,
-    `${problemSolved}`,
-    `${competitor}`,
-    `${businessName}`
+    `"crm issues"`,
+    `"looking for crm"`,
+
+    niche,
+    competitor,
+    problemSolved,
+    businessName
   ];
 }
 
@@ -74,21 +70,28 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
 
     for (const subreddit of subreddits) {
       for (const query of queries) {
+        await delay(1200); // Throttle requests
+
         try {
           const posts = await r.getSubreddit(subreddit).search({
             query,
             sort: "relevance",
             time: "year",
-            limit: 50,
+            limit: 15,
           });
 
           for (const post of posts) {
             const postText = (post.title + " " + (post.selftext || "")).toLowerCase();
-            const exclude = ["job", "salary", "hiring", "apply"];
+            const exclude = ["job", "salary", "hiring", "apply", "resume"];
             if (exclude.some(k => postText.includes(k))) continue;
 
             const classification = classifyText(postText);
             if (!["complaint", "interest"].includes(classification)) continue;
+
+            // Only include meaningful posts
+            const score = post.ups;
+            const postLength = post.selftext?.length || 0;
+            if (score < 5 || postLength < 40) continue;
 
             let profilePicture = null;
             try {
@@ -112,17 +115,9 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
               profile_picture: profilePicture,
             };
 
-            if (postText.includes(problemSolved.toLowerCase()) || classification === "interest") {
-              leads.push(postData);
-            }
-
-            if (postText.includes(competitor.toLowerCase()) || query.includes(competitor.toLowerCase())) {
-              competitorComplaints.push(postData);
-            }
-
-            if (postText.includes(businessName.toLowerCase())) {
-              companyComplaints.push(postData);
-            }
+            if (classification === "interest") leads.push(postData);
+            if (postText.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
+            if (postText.includes(businessName.toLowerCase())) companyComplaints.push(postData);
           }
         } catch (err) {
           console.log(`❌ Query "${query}" on subreddit "${subreddit}" failed:`, err.message);

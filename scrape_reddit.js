@@ -16,11 +16,23 @@ const complaintKeywords = [
 
 const interestKeywords = [
   "recommendation", "looking for", "best tool", "need help", "suggestion", "how do you", "anyone use",
-  "what's best", "alternatives to", "switch from", "leaving", "moving away", "crm for", "client tracking"
+  "what's best", "alternatives to", "switch from", "leaving", "moving away", "crm for", "client tracking",
+  "crm suggestions", "case management", "legal tech", "intake software"
 ];
 
-// Avoid hitting Reddit too hard
+const excludedTerms = ["job", "salary", "hiring", "resume", "applying", "college", "school", "intern"];
+
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
+
+// Extract meaningful context tokens
+function extractContextTokens(...fields) {
+  return fields
+    .flatMap(field => field.toLowerCase().split(/\s+/))
+    .filter(token =>
+      token.length > 3 &&
+      !["the", "this", "that", "your", "need", "help", "with", "from", "into", "tool", "using", "organizing"].includes(token)
+    );
+}
 
 function classifyText(text) {
   const lowered = text.toLowerCase();
@@ -36,6 +48,7 @@ function generateSubreddits(niche) {
     `${formatted}support`,
     "Entrepreneur",
     "smallbusiness",
+    "legaladvice",
     "startups",
     "business",
     "AskReddit"
@@ -63,6 +76,7 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
   try {
     const subreddits = generateSubreddits(niche);
     const queries = generateQueries(niche, competitor, businessName, problemSolved);
+    const contextTokens = extractContextTokens(niche, competitor, businessName, problemSolved);
 
     const leads = [];
     const competitorComplaints = [];
@@ -70,7 +84,7 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
 
     for (const subreddit of subreddits) {
       for (const query of queries) {
-        await delay(1200); // Throttle requests
+        await delay(1200); // throttle for safety
 
         try {
           const posts = await r.getSubreddit(subreddit).search({
@@ -81,17 +95,22 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
           });
 
           for (const post of posts) {
-            const postText = (post.title + " " + (post.selftext || "")).toLowerCase();
-            const exclude = ["job", "salary", "hiring", "apply", "resume"];
-            if (exclude.some(k => postText.includes(k))) continue;
+            const postTextRaw = post.title + " " + (post.selftext || "");
+            const postText = postTextRaw.toLowerCase();
 
-            const classification = classifyText(postText);
-            if (!["complaint", "interest"].includes(classification)) continue;
+            // ⛔️ Skip low-value content
+            if (
+              excludedTerms.some(k => postText.includes(k)) ||
+              postText.length < 60 ||
+              post.ups < 5
+            ) continue;
 
-            // Only include meaningful posts
-            const score = post.ups;
-            const postLength = post.selftext?.length || 0;
-            if (score < 5 || postLength < 40) continue;
+            const type = classifyText(postText);
+            if (!["complaint", "interest"].includes(type)) continue;
+
+            // ✅ Smart relevance scoring
+            const tokenHits = contextTokens.filter(t => postText.includes(t)).length;
+            if (tokenHits < 2) continue; // ignore weak matches
 
             let profilePicture = null;
             try {
@@ -99,23 +118,17 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
               profilePicture = user.icon_img || null;
             } catch {}
 
-            const relevanceBoost = [
-              postText.includes(problemSolved.toLowerCase()),
-              postText.includes(competitor.toLowerCase()),
-              postText.includes(businessName.toLowerCase())
-            ].filter(Boolean).length;
-
             const postData = {
               username: post.author.name,
               platform: "Reddit",
               time: new Date(post.created_utc * 1000).toISOString(),
-              text: post.title + " " + (post.selftext || ""),
-              match: 85 + relevanceBoost * 5,
+              text: postTextRaw,
+              match: 80 + tokenHits * 5,
               connect_url: `https://reddit.com${post.permalink}`,
               profile_picture: profilePicture,
             };
 
-            if (classification === "interest") leads.push(postData);
+            if (type === "interest") leads.push(postData);
             if (postText.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
             if (postText.includes(businessName.toLowerCase())) companyComplaints.push(postData);
           }

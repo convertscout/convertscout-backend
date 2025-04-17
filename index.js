@@ -17,7 +17,16 @@ app.use(express.json());
 
 // ✅ POST /api/leads — Save form submissions and scrape Reddit
 app.post("/api/leads", async (req, res) => {
-  const { businessName, niche, competitor, email, problemSolved } = req.body;
+  const {
+    businessName,
+    niche,
+    competitor,
+    email,
+    problemSolved,
+    targetCustomer,
+    industryKeywords,
+    painSummary
+  } = req.body;
 
   console.log("🔥 POST /api/leads triggered");
   console.log("📥 Received:", req.body);
@@ -44,22 +53,32 @@ app.post("/api/leads", async (req, res) => {
       }
     }
 
-    // ✅ Save meta first
+    // ✅ Save metadata before scraping
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
       competitor,
       email,
       problemSolved: problemSolved || "",
+      targetCustomer: targetCustomer || "",
+      industryKeywords: industryKeywords || "",
+      painSummary: painSummary || "",
       submittedAt: new Date(),
     });
 
     console.log("✅ Metadata saved:", metaDoc.id);
 
-    // ✅ Scrape Reddit
-    const scraped = await scrapeReddit(niche, competitor, businessName, problemSolved);
+    // ✅ Scrape Reddit using expanded inputs
+    const scraped = await scrapeReddit({
+      niche,
+      competitor,
+      businessName,
+      problemSolved,
+      targetCustomer,
+      industryKeywords,
+      painSummary
+    });
 
-    // ✅ Update with scraped data
     await leadsRef.doc(metaDoc.id).update({
       reddit: scraped,
     });
@@ -74,6 +93,9 @@ app.post("/api/leads", async (req, res) => {
         competitor,
         email,
         problemSolved,
+        targetCustomer,
+        industryKeywords,
+        painSummary,
         reddit: scraped,
       },
     });

@@ -9,94 +9,95 @@ const r = new snoowrap({
   password: process.env.REDDIT_PASSWORD,
 });
 
-const delay = (ms) => new Promise(res => setTimeout(res, ms));
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
 const complaintTriggers = [
-  "hate", "sucks", "terrible", "worst", "not working", "cancelled", "frustrated", "bug", "glitch",
-  "billing issue", "broken", "scam", "avoid", "issue", "problem", "doesn't work", "unreliable",
-  "disappointed", "too expensive", "support is bad", "not responsive", "slow", "crashing"
+  "hate", "sucks", "terrible", "worst", "not working", "cancelled", "frustrated",
+  "bug", "glitch", "billing issue", "broken", "scam", "avoid", "issue", "problem",
+  "doesn't work", "unreliable", "disappointed", "too expensive", "support is bad",
+  "not responsive", "slow", "crashing", "left", "switched"
 ];
 
-const excludeTerms = [
+const excludedTerms = [
   "job", "salary", "hiring", "resume", "intern", "school", "nsfw", "porn", "onlyfans"
 ];
 
-// 🔍 Full sentence intent-based queries
-function generateQueries(problemSolved, competitor, businessName) {
-  const queries = [];
-
-  if (problemSolved) {
-    queries.push(
-      `"looking for ${problemSolved}"`,
-      `"recommendation for ${problemSolved}"`,
-      `"any tools for ${problemSolved}"`,
-      `"suggestions for ${problemSolved}"`,
-      `"alternatives for ${problemSolved}"`
-    );
-  }
-
-  if (competitor) {
-    queries.push(
-      `"alternatives to ${competitor}"`,
-      `"bad experience with ${competitor}"`,
-      `"issues with ${competitor}"`,
-      `"leaving ${competitor}"`
-    );
-  }
-
-  if (businessName) {
-    queries.push(
-      `"issues with ${businessName}"`,
-      `"problem using ${businessName}"`,
-      `"unhappy with ${businessName}"`,
-      `"bug in ${businessName}"`
-    );
-  }
-
-  return queries;
-}
-
-// Targeted subreddits
-function getSubreddits(problemSolved) {
-  const keyword = problemSolved.split(" ")[0].toLowerCase();
-  return [
-    keyword,
-    `${keyword}support`,
-    "Entrepreneur",
-    "smallbusiness",
-    "startups",
-    "business",
-    "AskReddit",
-    "saas"
-  ];
-}
-
-// Classify post
 function classify(text) {
-  const lower = text.toLowerCase();
-  if (complaintTriggers.some(word => lower.includes(word))) return "complaint";
-  if (lower.includes("looking for") || lower.includes("recommend") || lower.includes("alternative")) return "interest";
+  const t = text.toLowerCase();
+  if (complaintTriggers.some(word => t.includes(word))) return "complaint";
+  if (t.includes("looking for") || t.includes("recommend") || t.includes("alternative")) return "interest";
   return null;
 }
 
-const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
-  const subreddits = getSubreddits(problemSolved);
-  const queries = generateQueries(problemSolved, competitor, businessName);
+function generateQueries({ problemSolved, competitor, businessName, targetCustomer, industryKeywords, painSummary }) {
+  const base = [];
+
+  const all = [
+    ...(problemSolved ? [problemSolved] : []),
+    ...(targetCustomer ? [targetCustomer] : []),
+    ...(painSummary ? [painSummary] : []),
+    ...(industryKeywords ? industryKeywords.split(",") : []),
+  ];
+
+  all.forEach(phrase => {
+    const trimmed = phrase.trim().toLowerCase();
+    base.push(`looking for ${trimmed}`);
+    base.push(`recommendation for ${trimmed}`);
+    base.push(`suggestions for ${trimmed}`);
+    base.push(`tool to solve ${trimmed}`);
+  });
+
+  if (competitor) {
+    const c = competitor.toLowerCase();
+    base.push(`alternatives to ${c}`);
+    base.push(`issues with ${c}`);
+    base.push(`frustrated with ${c}`);
+    base.push(`leaving ${c}`);
+  }
+
+  if (businessName) {
+    const b = businessName.toLowerCase();
+    base.push(`problems with ${b}`);
+    base.push(`complaints about ${b}`);
+    base.push(`experience using ${b}`);
+  }
+
+  return [...new Set(base)];
+}
+
+function getSubreddits() {
+  return [
+    "legaltech",
+    "lawfirm",
+    "smallbusiness",
+    "startups",
+    "Entrepreneur",
+    "AskReddit",
+    "SaaS"
+  ];
+}
+
+const scrapeReddit = async (niche, competitor, businessName, problemSolved, targetCustomer = "", industryKeywords = "", painSummary = "") => {
+  const subreddits = getSubreddits();
+  const queries = generateQueries({ problemSolved, competitor, businessName, targetCustomer, industryKeywords, painSummary });
 
   const leads = [];
   const competitorComplaints = [];
   const companyComplaints = [];
 
+  let throttleCounter = 0;
+
   for (const subreddit of subreddits) {
     for (const query of queries) {
-      await delay(1200); // Respect Reddit API limits
+      throttleCounter++;
+      if (throttleCounter % 4 === 0) await delay(800);
 
       try {
         const posts = await r.getSubreddit(subreddit).search({
           query,
           sort: "relevance",
           time: "year",
-          limit: 15,
+          limit: 12,
         });
 
         for (const post of posts) {
@@ -104,9 +105,9 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
           const lower = raw.toLowerCase();
 
           if (
-            excludeTerms.some(term => lower.includes(term)) ||
-            raw.length < 80 ||
-            post.ups < 5
+            excludedTerms.some(term => lower.includes(term)) ||
+            raw.length < 50 ||
+            post.ups < 3
           ) continue;
 
           const type = classify(lower);
@@ -129,8 +130,8 @@ const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
           };
 
           if (type === "interest") leads.push(postData);
-          if (lower.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
-          if (lower.includes(businessName.toLowerCase())) companyComplaints.push(postData);
+          if (competitor && lower.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
+          if (businessName && lower.includes(businessName.toLowerCase())) companyComplaints.push(postData);
         }
       } catch (err) {
         console.log(`❌ Query "${query}" on r/${subreddit} failed:`, err.message);

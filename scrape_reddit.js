@@ -9,144 +9,140 @@ const r = new snoowrap({
   password: process.env.REDDIT_PASSWORD,
 });
 
-const complaintKeywords = [
-  "hate", "sucks", "terrible", "worst", "not working", "cancelled", "frustrated", "bug", "glitch",
-  "billing issue", "broken", "scam", "avoid", "issue", "problem", "doesn't work", "unreliable"
-];
-
-const interestKeywords = [
-  "recommendation", "looking for", "best tool", "need help", "suggestion", "how do you", "anyone use",
-  "what's best", "alternatives to", "switch from", "leaving", "moving away", "crm for", "client tracking",
-  "crm suggestions", "case management", "legal tech", "intake software"
-];
-
-const excludedTerms = ["job", "salary", "hiring", "resume", "applying", "college", "school", "intern"];
-
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-// Extract meaningful context tokens
-function extractContextTokens(...fields) {
-  return fields
-    .flatMap(field => field.toLowerCase().split(/\s+/))
-    .filter(token =>
-      token.length > 3 &&
-      !["the", "this", "that", "your", "need", "help", "with", "from", "into", "tool", "using", "organizing"].includes(token)
+const complaintTriggers = [
+  "hate", "sucks", "terrible", "worst", "not working", "cancelled", "frustrated", "bug", "glitch",
+  "billing issue", "broken", "scam", "avoid", "issue", "problem", "doesn't work", "unreliable",
+  "disappointed", "too expensive", "support is bad", "not responsive", "slow", "crashing"
+];
+
+const excludeTerms = [
+  "job", "salary", "hiring", "resume", "intern", "school", "nsfw", "porn", "onlyfans"
+];
+
+// 🔍 Full sentence intent-based queries
+function generateQueries(problemSolved, competitor, businessName) {
+  const queries = [];
+
+  if (problemSolved) {
+    queries.push(
+      `"looking for ${problemSolved}"`,
+      `"recommendation for ${problemSolved}"`,
+      `"any tools for ${problemSolved}"`,
+      `"suggestions for ${problemSolved}"`,
+      `"alternatives for ${problemSolved}"`
     );
+  }
+
+  if (competitor) {
+    queries.push(
+      `"alternatives to ${competitor}"`,
+      `"bad experience with ${competitor}"`,
+      `"issues with ${competitor}"`,
+      `"leaving ${competitor}"`
+    );
+  }
+
+  if (businessName) {
+    queries.push(
+      `"issues with ${businessName}"`,
+      `"problem using ${businessName}"`,
+      `"unhappy with ${businessName}"`,
+      `"bug in ${businessName}"`
+    );
+  }
+
+  return queries;
 }
 
-function classifyText(text) {
-  const lowered = text.toLowerCase();
-  if (complaintKeywords.some(k => lowered.includes(k))) return "complaint";
-  if (interestKeywords.some(k => lowered.includes(k))) return "interest";
+// Targeted subreddits
+function getSubreddits(problemSolved) {
+  const keyword = problemSolved.split(" ")[0].toLowerCase();
+  return [
+    keyword,
+    `${keyword}support`,
+    "Entrepreneur",
+    "smallbusiness",
+    "startups",
+    "business",
+    "AskReddit",
+    "saas"
+  ];
+}
+
+// Classify post
+function classify(text) {
+  const lower = text.toLowerCase();
+  if (complaintTriggers.some(word => lower.includes(word))) return "complaint";
+  if (lower.includes("looking for") || lower.includes("recommend") || lower.includes("alternative")) return "interest";
   return null;
 }
 
-function generateSubreddits(niche) {
-  const formatted = niche.replace(/\s+/g, "").toLowerCase();
-  return [
-    formatted,
-    `${formatted}support`,
-    "Entrepreneur",
-    "smallbusiness",
-    "legaladvice",
-    "startups",
-    "business",
-    "AskReddit"
-  ];
-}
-
-function generateQueries(niche, competitor, businessName, problemSolved) {
-  return [
-    `"need help with ${niche}"`,
-    `"alternatives to ${competitor}"`,
-    `"bad experience with ${competitor}"`,
-    `"recommendation for ${niche}"`,
-    `"problems with ${businessName}"`,
-    `"crm issues"`,
-    `"looking for crm"`,
-
-    niche,
-    competitor,
-    problemSolved,
-    businessName
-  ];
-}
-
 const scrapeReddit = async (niche, competitor, businessName, problemSolved) => {
-  try {
-    const subreddits = generateSubreddits(niche);
-    const queries = generateQueries(niche, competitor, businessName, problemSolved);
-    const contextTokens = extractContextTokens(niche, competitor, businessName, problemSolved);
+  const subreddits = getSubreddits(problemSolved);
+  const queries = generateQueries(problemSolved, competitor, businessName);
 
-    const leads = [];
-    const competitorComplaints = [];
-    const companyComplaints = [];
+  const leads = [];
+  const competitorComplaints = [];
+  const companyComplaints = [];
 
-    for (const subreddit of subreddits) {
-      for (const query of queries) {
-        await delay(1200); // throttle for safety
+  for (const subreddit of subreddits) {
+    for (const query of queries) {
+      await delay(1200); // Respect Reddit API limits
 
-        try {
-          const posts = await r.getSubreddit(subreddit).search({
-            query,
-            sort: "relevance",
-            time: "year",
-            limit: 15,
-          });
+      try {
+        const posts = await r.getSubreddit(subreddit).search({
+          query,
+          sort: "relevance",
+          time: "year",
+          limit: 15,
+        });
 
-          for (const post of posts) {
-            const postTextRaw = post.title + " " + (post.selftext || "");
-            const postText = postTextRaw.toLowerCase();
+        for (const post of posts) {
+          const raw = post.title + " " + (post.selftext || "");
+          const lower = raw.toLowerCase();
 
-            // ⛔️ Skip low-value content
-            if (
-              excludedTerms.some(k => postText.includes(k)) ||
-              postText.length < 60 ||
-              post.ups < 5
-            ) continue;
+          if (
+            excludeTerms.some(term => lower.includes(term)) ||
+            raw.length < 80 ||
+            post.ups < 5
+          ) continue;
 
-            const type = classifyText(postText);
-            if (!["complaint", "interest"].includes(type)) continue;
+          const type = classify(lower);
+          if (!type) continue;
 
-            // ✅ Smart relevance scoring
-            const tokenHits = contextTokens.filter(t => postText.includes(t)).length;
-            if (tokenHits < 2) continue; // ignore weak matches
+          let profilePicture = null;
+          try {
+            const user = await r.getUser(post.author.name).fetch();
+            profilePicture = user.icon_img || null;
+          } catch {}
 
-            let profilePicture = null;
-            try {
-              const user = await r.getUser(post.author.name).fetch();
-              profilePicture = user.icon_img || null;
-            } catch {}
+          const postData = {
+            username: post.author.name,
+            platform: "Reddit",
+            time: new Date(post.created_utc * 1000).toISOString(),
+            text: raw,
+            match: post.ups,
+            connect_url: `https://reddit.com${post.permalink}`,
+            profile_picture: profilePicture,
+          };
 
-            const postData = {
-              username: post.author.name,
-              platform: "Reddit",
-              time: new Date(post.created_utc * 1000).toISOString(),
-              text: postTextRaw,
-              match: 80 + tokenHits * 5,
-              connect_url: `https://reddit.com${post.permalink}`,
-              profile_picture: profilePicture,
-            };
-
-            if (type === "interest") leads.push(postData);
-            if (postText.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
-            if (postText.includes(businessName.toLowerCase())) companyComplaints.push(postData);
-          }
-        } catch (err) {
-          console.log(`❌ Query "${query}" on subreddit "${subreddit}" failed:`, err.message);
+          if (type === "interest") leads.push(postData);
+          if (lower.includes(competitor.toLowerCase())) competitorComplaints.push(postData);
+          if (lower.includes(businessName.toLowerCase())) companyComplaints.push(postData);
         }
+      } catch (err) {
+        console.log(`❌ Query "${query}" on r/${subreddit} failed:`, err.message);
       }
     }
-
-    return {
-      leads: leads.slice(0, 3),
-      competitorComplaints: competitorComplaints.slice(0, 3),
-      companyComplaints: companyComplaints.slice(0, 3),
-    };
-  } catch (error) {
-    console.error("❌ Reddit scraping error:", error);
-    return { leads: [], competitorComplaints: [], companyComplaints: [] };
   }
+
+  return {
+    leads: leads.slice(0, 3),
+    competitorComplaints: competitorComplaints.slice(0, 3),
+    companyComplaints: companyComplaints.slice(0, 3),
+  };
 };
 
 module.exports = scrapeReddit;

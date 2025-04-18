@@ -1,28 +1,80 @@
 const express = require("express");
 const cors = require("cors");
 const { db } = require("./firebase");
-const scrapeReddit = require("./scrape_reddit");
+// const scrapeReddit = require("./scrape_reddit");
 require("dotenv").config();
 
 const app = express();
 
-// ✅ Enable CORS for Netlify frontend
 app.use(cors({
-  origin: "https://convertscout.netlify.app", // Allow Netlify frontend
+  origin: "https://convertscout.netlify.app",
   methods: ["GET", "POST"],
   credentials: true
 }));
 
 app.use(express.json());
 
-// ✅ POST /api/leads — Save form submissions and scrape Reddit
+// 🔥 Helper to generate realistic fake leads
+const generateFakeData = ({ businessName, competitor, targetCustomer }) => {
+  const sampleUsernames = ["smb_guru", "founder42", "tiredofcrm", "leanbizowner", "growthops"];
+  const sampleLeads = [
+    {
+      text: `Any alternatives to ${competitor}? It's too complex for my team.`,
+      match: 89
+    },
+    {
+      text: `What are you using to manage client work? Looking for something simpler.`,
+      match: 91
+    },
+    {
+      text: `Need help organizing client workflows. ${businessName} doesn't fit my use case.`,
+      match: 86
+    }
+  ];
+
+  const now = Date.now();
+  return {
+    leads: sampleLeads.map((lead, i) => ({
+      username: sampleUsernames[i % sampleUsernames.length],
+      platform: "Reddit",
+      time: new Date(now - i * 86400000).toISOString(),
+      text: lead.text,
+      match: lead.match,
+      connect_url: "https://reddit.com/r/Entrepreneur",
+      profile_picture: null
+    })),
+    competitorComplaints: [
+      {
+        username: "techstruggles",
+        platform: "Reddit",
+        time: new Date(now - 2 * 86400000).toISOString(),
+        text: `${competitor} keeps crashing when I try to update contact info.`,
+        match: 84,
+        connect_url: "https://reddit.com/r/smallbusiness",
+        profile_picture: null
+      }
+    ],
+    companyComplaints: [
+      {
+        username: "legaltechfan",
+        platform: "Reddit",
+        time: new Date(now - 3 * 86400000).toISOString(),
+        text: `Used ${businessName} for a month — great idea but missing key features for ${targetCustomer}.`,
+        match: 77,
+        connect_url: "https://reddit.com/r/startups",
+        profile_picture: null
+      }
+    ]
+  };
+};
+
+// ✅ POST /api/leads — Save form and return FAKE data
 app.post("/api/leads", async (req, res) => {
   const {
     businessName,
     niche,
     competitor,
     email,
-    problemSolved,
     targetCustomer,
     industryKeywords,
     painSummary
@@ -39,27 +91,26 @@ app.post("/api/leads", async (req, res) => {
   try {
     const leadsRef = db.collection("users").doc(email).collection("leads");
 
-    // ✅ Check if this user already has scraped leads
+    // 💤 Disabled: check existing data
+    /*
     const snapshot = await leadsRef.orderBy("submittedAt", "desc").limit(1).get();
-
     if (!snapshot.empty) {
       const existingData = snapshot.docs[0].data();
       if (existingData.reddit && existingData.reddit.leads?.length > 0) {
-        console.log("✅ Returning existing leads without re-scraping");
         return res.status(200).json({
           message: "✅ Returning existing scraped data.",
           data: existingData,
         });
       }
     }
+    */
 
-    // ✅ Save metadata before scraping
+    // ✅ Save metadata only
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
       competitor,
       email,
-      problemSolved: problemSolved || "",
       targetCustomer: targetCustomer || "",
       industryKeywords: industryKeywords || "",
       painSummary: painSummary || "",
@@ -68,44 +119,33 @@ app.post("/api/leads", async (req, res) => {
 
     console.log("✅ Metadata saved:", metaDoc.id);
 
-    // ✅ Scrape Reddit using expanded inputs
-    const scraped = await scrapeReddit({
-      niche,
-      competitor,
-      businessName,
-      problemSolved,
-      targetCustomer,
-      industryKeywords,
-      painSummary
-    });
+    // 🧪 Generate fake personalized data
+    const fakeRedditData = generateFakeData({ businessName, competitor, targetCustomer });
 
     await leadsRef.doc(metaDoc.id).update({
-      reddit: scraped,
+      reddit: fakeRedditData
     });
 
-    console.log("✅ Scraped data saved");
-
     return res.status(200).json({
-      message: "✅ Lead submitted and scraped successfully.",
+      message: "🧪 BETA MODE — Returning fake personalized leads.",
       data: {
         businessName,
         niche,
         competitor,
         email,
-        problemSolved,
         targetCustomer,
         industryKeywords,
         painSummary,
-        reddit: scraped,
-      },
+        reddit: fakeRedditData
+      }
     });
   } catch (error) {
-    console.error("❌ Error saving or scraping lead:", error);
+    console.error("❌ Error saving or faking lead:", error);
     return res.status(500).json({ error: "Failed to process lead." });
   }
 });
 
-// ✅ GET /api/leads/:email — Fetch leads for user
+// ✅ GET /api/leads/:email
 app.get("/api/leads/:email", async (req, res) => {
   const { email } = req.params;
   if (!email) return res.status(400).json({ error: "Email is required." });
@@ -130,7 +170,6 @@ app.get("/api/leads/:email", async (req, res) => {
   }
 });
 
-// Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);

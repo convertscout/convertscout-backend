@@ -14,68 +14,74 @@ app.use(cors({
 
 app.use(express.json());
 
-// 🔥 Dynamic Fake Data Generator
+// 🔥 Simple, Universal Fake Data Generator
 const generateFakeData = ({ businessName, competitor, targetCustomer, industryKeywords, painSummary }) => {
-  const usernames = ["founder42", "leanbizowner", "ops_ninja", "productjam", "nocoderx"];
   const now = Date.now();
+  const connect_url = "https://convertscout.netlify.app/pay-signup";
 
   const keywords = industryKeywords?.split(",").map(k => k.trim()).filter(Boolean) || [];
-  const primaryKeyword = keywords[0] || "client tools";
-  const persona = targetCustomer || "small business owner";
-  const pain = painSummary || "managing operations";
+  const mainKeyword = keywords[0] || "tools";
+  const persona = targetCustomer || "business owners";
+  const pain = painSummary || "day-to-day struggles";
+
+  const leads = [
+    {
+      username: "nocoderx",
+      platform: "Reddit",
+      time: new Date(now - 86400000).toISOString(),
+      text: `Any alternatives to ${competitor}? It's just not cutting it for most ${persona}.`,
+      match: 88,
+      connect_url,
+      profile_picture: null
+    },
+    {
+      username: "growthstack",
+      platform: "Reddit",
+      time: new Date(now - 2 * 86400000).toISOString(),
+      text: `We’re moving away from older options — anyone using newer ${mainKeyword}? Any favorites here?`,
+      match: 91,
+      connect_url,
+      profile_picture: null
+    },
+    {
+      username: "leanfounder101",
+      platform: "Reddit",
+      time: new Date(now - 3 * 86400000).toISOString(),
+      text: `Trying to reduce friction in ${pain}. What solutions are people loving right now?`,
+      match: 86,
+      connect_url,
+      profile_picture: null
+    }
+  ];
+
+  const competitorComplaints = [
+    {
+      username: "rantengineer",
+      platform: "Reddit",
+      time: new Date(now - 4 * 86400000).toISOString(),
+      text: `${competitor} keeps breaking during client onboarding. Super frustrating.`,
+      match: 82,
+      connect_url,
+      profile_picture: null
+    }
+  ];
+
+  const companyComplaints = [
+    {
+      username: "realfeedback88",
+      platform: "Reddit",
+      time: new Date(now - 5 * 86400000).toISOString(),
+      text: `Tried ${businessName} briefly — the idea is solid, but missing depth in ${mainKeyword}.`,
+      match: 76,
+      connect_url,
+      profile_picture: null
+    }
+  ];
 
   return {
-    leads: [
-      {
-        username: usernames[0],
-        platform: "Reddit",
-        time: new Date(now - 86400000).toISOString(),
-        text: `Any alternatives to ${competitor}? It's too bloated for a ${persona}.`,
-        match: 88,
-        connect_url: "https://convertscout.netlify.app/pay-signup",
-        profile_picture: null
-      },
-      {
-        username: usernames[1],
-        platform: "Reddit",
-        time: new Date(now - 2 * 86400000).toISOString(),
-        text: `Looking for tools to improve ${pain}. What’s everyone using?`,
-        match: 91,
-        connect_url: "https://convertscout.netlify.app/pay-signup",
-        profile_picture: null
-      },
-      {
-        username: usernames[2],
-        platform: "Reddit",
-        time: new Date(now - 3 * 86400000).toISOString(),
-        text: `Tried ${businessName} for ${primaryKeyword} but felt clunky. Any modern alternatives?`,
-        match: 86,
-        connect_url: "https://convertscout.netlify.app/pay-signup",
-        profile_picture: null
-      }
-    ],
-    competitorComplaints: [
-      {
-        username: "support_rant",
-        platform: "Reddit",
-        time: new Date(now - 4 * 86400000).toISOString(),
-        text: `${competitor} crashes every time I try to onboard a new ${persona}.`,
-        match: 84,
-        connect_url: "https://convertscout.netlify.app/pay-signup",
-        profile_picture: null
-      }
-    ],
-    companyComplaints: [
-      {
-        username: "honestfeedback101",
-        platform: "Reddit",
-        time: new Date(now - 5 * 86400000).toISOString(),
-        text: `Used ${businessName} for a project with ${targetCustomer}s — solid UX, but needs better ${primaryKeyword}.`,
-        match: 78,
-        connect_url: "https://convertscout.netlify.app/pay-signup",
-        profile_picture: null
-      }
-    ]
+    leads,
+    competitorComplaints,
+    companyComplaints
   };
 };
 
@@ -100,17 +106,6 @@ app.post("/api/leads", async (req, res) => {
 
   try {
     const leadsRef = db.collection("users").doc(email).collection("leads");
-
-    // 💤 Disabled scraping check
-    /*
-    const snapshot = await leadsRef.orderBy("submittedAt", "desc").limit(1).get();
-    if (!snapshot.empty) {
-      const existingData = snapshot.docs[0].data();
-      if (existingData.reddit && existingData.reddit.leads?.length > 0) {
-        return res.status(200).json({ message: "✅ Returning cached data.", data: existingData });
-      }
-    }
-    */
 
     const metaDoc = await leadsRef.add({
       businessName,

@@ -14,61 +14,72 @@ app.use(cors({
 
 app.use(express.json());
 
-// 🔥 Helper to generate realistic fake leads
-const generateFakeData = ({ businessName, competitor, targetCustomer }) => {
-  const sampleUsernames = ["smb_guru", "founder42", "tiredofcrm", "leanbizowner", "growthops"];
-  const sampleLeads = [
-    {
-      text: `Any alternatives to ${competitor}? It's too complex for my team.`,
-      match: 89
-    },
-    {
-      text: `What are you using to manage client work? Looking for something simpler.`,
-      match: 91
-    },
-    {
-      text: `Need help organizing client workflows. ${businessName} doesn't fit my use case.`,
-      match: 86
-    }
-  ];
-
+// 🔥 Dynamic Fake Data Generator
+const generateFakeData = ({ businessName, competitor, targetCustomer, industryKeywords, painSummary }) => {
+  const usernames = ["founder42", "leanbizowner", "ops_ninja", "productjam", "nocoderx"];
   const now = Date.now();
+
+  const keywords = industryKeywords?.split(",").map(k => k.trim()).filter(Boolean) || [];
+  const primaryKeyword = keywords[0] || "client tools";
+  const persona = targetCustomer || "small business owner";
+  const pain = painSummary || "managing operations";
+
   return {
-    leads: sampleLeads.map((lead, i) => ({
-      username: sampleUsernames[i % sampleUsernames.length],
-      platform: "Reddit",
-      time: new Date(now - i * 86400000).toISOString(),
-      text: lead.text,
-      match: lead.match,
-      connect_url: "https://reddit.com/r/Entrepreneur",
-      profile_picture: null
-    })),
-    competitorComplaints: [
+    leads: [
       {
-        username: "techstruggles",
+        username: usernames[0],
+        platform: "Reddit",
+        time: new Date(now - 86400000).toISOString(),
+        text: `Any alternatives to ${competitor}? It's too bloated for a ${persona}.`,
+        match: 88,
+        connect_url: "https://convertscout.netlify.app/pay-signup",
+        profile_picture: null
+      },
+      {
+        username: usernames[1],
         platform: "Reddit",
         time: new Date(now - 2 * 86400000).toISOString(),
-        text: `${competitor} keeps crashing when I try to update contact info.`,
+        text: `Looking for tools to improve ${pain}. What’s everyone using?`,
+        match: 91,
+        connect_url: "https://convertscout.netlify.app/pay-signup",
+        profile_picture: null
+      },
+      {
+        username: usernames[2],
+        platform: "Reddit",
+        time: new Date(now - 3 * 86400000).toISOString(),
+        text: `Tried ${businessName} for ${primaryKeyword} but felt clunky. Any modern alternatives?`,
+        match: 86,
+        connect_url: "https://convertscout.netlify.app/pay-signup",
+        profile_picture: null
+      }
+    ],
+    competitorComplaints: [
+      {
+        username: "support_rant",
+        platform: "Reddit",
+        time: new Date(now - 4 * 86400000).toISOString(),
+        text: `${competitor} crashes every time I try to onboard a new ${persona}.`,
         match: 84,
-        connect_url: "https://reddit.com/r/smallbusiness",
+        connect_url: "https://convertscout.netlify.app/pay-signup",
         profile_picture: null
       }
     ],
     companyComplaints: [
       {
-        username: "legaltechfan",
+        username: "honestfeedback101",
         platform: "Reddit",
-        time: new Date(now - 3 * 86400000).toISOString(),
-        text: `Used ${businessName} for a month — great idea but missing key features for ${targetCustomer}.`,
-        match: 77,
-        connect_url: "https://reddit.com/r/startups",
+        time: new Date(now - 5 * 86400000).toISOString(),
+        text: `Used ${businessName} for a project with ${targetCustomer}s — solid UX, but needs better ${primaryKeyword}.`,
+        match: 78,
+        connect_url: "https://convertscout.netlify.app/pay-signup",
         profile_picture: null
       }
     ]
   };
 };
 
-// ✅ POST /api/leads — Save form and return FAKE data
+// ✅ POST /api/leads — Save form + return fake data
 app.post("/api/leads", async (req, res) => {
   const {
     businessName,
@@ -84,28 +95,23 @@ app.post("/api/leads", async (req, res) => {
   console.log("📥 Received:", req.body);
 
   if (!email || !businessName || !niche) {
-    console.log("❌ Missing required fields");
     return res.status(400).json({ error: "Missing required fields." });
   }
 
   try {
     const leadsRef = db.collection("users").doc(email).collection("leads");
 
-    // 💤 Disabled: check existing data
+    // 💤 Disabled scraping check
     /*
     const snapshot = await leadsRef.orderBy("submittedAt", "desc").limit(1).get();
     if (!snapshot.empty) {
       const existingData = snapshot.docs[0].data();
       if (existingData.reddit && existingData.reddit.leads?.length > 0) {
-        return res.status(200).json({
-          message: "✅ Returning existing scraped data.",
-          data: existingData,
-        });
+        return res.status(200).json({ message: "✅ Returning cached data.", data: existingData });
       }
     }
     */
 
-    // ✅ Save metadata only
     const metaDoc = await leadsRef.add({
       businessName,
       niche,
@@ -117,17 +123,12 @@ app.post("/api/leads", async (req, res) => {
       submittedAt: new Date(),
     });
 
-    console.log("✅ Metadata saved:", metaDoc.id);
+    const reddit = generateFakeData({ businessName, competitor, targetCustomer, industryKeywords, painSummary });
 
-    // 🧪 Generate fake personalized data
-    const fakeRedditData = generateFakeData({ businessName, competitor, targetCustomer });
-
-    await leadsRef.doc(metaDoc.id).update({
-      reddit: fakeRedditData
-    });
+    await leadsRef.doc(metaDoc.id).update({ reddit });
 
     return res.status(200).json({
-      message: "🧪 BETA MODE — Returning fake personalized leads.",
+      message: "🧪 BETA MODE — Returning dynamic fake leads.",
       data: {
         businessName,
         niche,
@@ -136,11 +137,11 @@ app.post("/api/leads", async (req, res) => {
         targetCustomer,
         industryKeywords,
         painSummary,
-        reddit: fakeRedditData
+        reddit
       }
     });
   } catch (error) {
-    console.error("❌ Error saving or faking lead:", error);
+    console.error("❌ Error saving or generating fake leads:", error);
     return res.status(500).json({ error: "Failed to process lead." });
   }
 });
@@ -158,11 +159,7 @@ app.get("/api/leads/:email", async (req, res) => {
       return res.status(200).json({ message: "No data found", data: [] });
     }
 
-    const leads = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
+    const leads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     return res.status(200).json({ data: leads });
   } catch (error) {
     console.error("❌ Error fetching leads:", error);
